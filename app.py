@@ -1,129 +1,109 @@
 import streamlit as st
 import google.generativeai as genai
-import json
 from PIL import Image
 
-# 1. 網頁基本設定
-st.set_page_config(page_title="AI 輔助靜力學求解系統 - 摩擦力篇", layout="wide")
+# 讓網頁版面變寬，左邊輸入、右邊看結果
+st.set_page_config(layout="wide")
+
 st.title("📐 AI 輔助靜力學求解系統")
-st.subheader("第四章：摩擦力 (Friction) 專題版")
-st.write("本系統由 Gemini 1.5 Flash 驅動，專門解析靜力學中的摩擦力問題。")
+st.subheader("第四章：摩擦力 (Friction) 2.0 互動修正版")
+st.write("本系統由 Gemini 2.5 Flash 驅動。若 AI 計算有誤，可在右側對話框直接輸入提示叫它重算！")
 
-# 2. API Key 設定（本地端完全安全版，保證不崩潰）
+# --- 【金鑰安全檢查區】 ---
 api_key_ready = False
+if "STORED_API_KEY" in st.secrets:
+    genai.configure(api_key=st.secrets["STORED_API_KEY"])
+    api_key_ready = True
 
-try:
-    # 這段只有在丟上網路（Streamlit Cloud）後才有用，本機執行時會自動跳過
-    if "STORED_API_KEY" in st.secrets:
-        genai.configure(api_key=st.secrets["STORED_API_KEY"])
-        api_key_ready = True
-except:
-    # 在自己電腦執行時，如果抓不到 secrets 就安全 pass，絕對不報錯
-    pass
-
-# 如果網頁沒偵測到雲端金鑰，就在左邊側邊欄做一個輸入框給使用者填
 if not api_key_ready:
     st.sidebar.warning("⚠️ 尚未偵測到雲端密鑰")
     user_key = st.sidebar.text_input("請在此輸入您的 Gemini API Key：", type="password")
     if user_key:
-        genai.configure(api_key=user_key)
+        cleaned_key = user_key.strip().replace('"', '').replace("'", "")
+        genai.configure(api_key=cleaned_key)
         api_key_ready = True
     else:
-        st.sidebar.info("請輸入從 Google AI Studio 申請到的 API Key 以利本地測試。")
+        st.sidebar.info("請輸入從 Google AI Studio 申請到的 API Key 以利測試。")
 
-# 3. 畫面佈局：左邊輸入、右邊輸出
-col1, col2 = st.columns([1, 1])
+# --- 🌟【2.0 核心：初始化大腦記憶體】🌟 ---
+# 確保網頁重新整理時，對話紀錄不會不見
+if "chat_session" not in st.session_state:
+    st.session_state.chat_session = None
+if "messages" not in st.session_state:
+    st.session_state.messages = []
+
+# --- 【前端介面：左右雙欄配置】 ---
+col1, col2 = st.columns(2)
 
 with col1:
     st.header("1. 使用者輸入區")
-    
-    # 文字輸入框
-    problem_text = st.text_area(
-        "請輸入題目文字：", 
-        placeholder="例如：一重 500 N 的木塊置於水平地面，靜摩擦係數 0.3，動摩擦係數 0.2。若施加一 100 N 的水平推力，求此時木塊受到的摩擦力為多少？"
-    )
-    
-    # 圖片上傳功能
+    user_text = st.text_area("請輸入題目文字敘述：", placeholder="例如：一重 30 kg 桿件 AB 靠在牆面...")
     uploaded_file = st.file_uploader("上傳題目圖片（支援 PNG / JPG / JPEG）", type=["png", "jpg", "jpeg"])
+
     if uploaded_file:
         image = Image.open(uploaded_file)
-        st.image(image, caption="📸 已上傳的題目圖片", use_container_width=True)
-        
-    # 開始按鈕
-    start_solve = st.button("🚀 開始解題")
+        st.image(image, caption="📸 已上傳的題目圖片", width='stretch')
+
+    # 按鈕：發起全新題目的解答
+    if st.button("🚀 開始解題"):
+        if api_key_ready:
+            # 當點擊全新解題時，重置聊天室，避免上一題的記憶干擾這一題
+            model = genai.GenerativeModel('gemini-2.5-flash')
+            st.session_state.chat_session = model.start_chat(history=[])
+            st.session_state.messages = [] # 清空舊對話
+
+            # 設定給 AI 的基本出題格式規範
+            system_prompt = (
+                "你是一個專業的靜力學教授。請詳細解析使用者上傳的摩擦力題目。\n"
+                "請嚴格包含以下架構輸出：\n"
+                "📌 題型與狀態判定：分析是剛體、聯結體，以及屬於靜止或即將滑動狀態。\n"
+                "📐 使用公式：列出解題需要的力平衡與力矩平衡公式。\n"
+                "🔢 詳細解題步驟：拆解至少 5 個以上的詳細步驟，包含計算過程與代入的數值。\n\n"
+                f"題目文字：{user_text}"
+            )
+
+            with st.spinner("AI 正在召喚力學之魂分析題目中..."):
+                if uploaded_file:
+                    response = st.session_state.chat_session.send_message([image, system_prompt])
+                else:
+                    response = st.session_state.chat_session.send_message(system_prompt)
+                
+                # 將第一輪的 AI 答案存入記憶體
+                st.session_state.messages.append({"role": "ai", "content": response.text})
+        else:
+            st.error("請先在左側欄位提供 API Key 才能連線到 AI 大腦！")
 
 with col2:
     st.header("2. 系統解析結果")
-    
-    if start_solve:
-        if not problem_text and not uploaded_file:
-            st.error("❌ 請輸入題目文字或上傳題目圖片！")
-        elif not api_key_ready:
-            st.error("❌ 請先在左側邊欄輸入您的 Gemini API Key！")
-        else:
-            with st.spinner("🧠 AI 正在分析摩擦力狀態並計算中，請稍候..."):
-                try:
-                    # 設計摩擦力專用的 Prompt 提示詞
-                    prompt = f"""
-                    你是一個精通大學工程力學、靜力學（Statics）的專業教授。
-                    請分析以下關於「摩擦力（Friction）」的問題，並嚴格以 JSON 格式回傳結果。
-                    
-                    題目文字內容：{problem_text}
-                    
-                    請遵循以下摩擦力的物理邏輯進行嚴謹分析：
-                    1. 題型判斷：說明這是屬於水平面、斜面、還是聯結體的摩擦力問題。
-                    2. 受力分析：判斷正向力 N、沿運動方向的外力等。
-                    3. 計算最大靜摩擦力：f_max = mu_s * N。
-                    4. 狀態判定：比較外力與最大靜摩擦力。若外力 <= f_max，物體靜止，摩擦力等於外力；若外力 > f_max，物體滑動，摩擦力等於動摩擦力 (f_k = mu_k * N)。
-                    5. 給出最終答案。
 
-                    請務必使用【繁體中文】回傳，並嚴格遵守以下 JSON 格式，不要包含任何 ```json 的標記：
-                    {{
-                        "type_judgment": "填寫題型與物體狀態判斷",
-                        "formula_used": "列出此題用到的核心公式（例如：f_max = mu_s * N, f = F_push）",
-                        "steps": [
-                            "步驟 1：計算正向力...",
-                            "步驟 2：計算最大靜摩擦力...",
-                            "步驟 3：判定運動狀態並得出摩擦力..."
-                        ],
-                        "calculation_result": "最終答案（包含摩擦力大小與方向）",
-                        "notes": "給學生的補充說明或物理觀念提醒"
-                    }}
-                    """
+    # 如果記憶體裡面有對話紀錄，就依序渲染出來
+    if st.session_state.messages:
+        for msg in st.session_state.messages:
+            if msg["role"] == "ai":
+                st.markdown(msg["content"])
+            elif msg["role"] == "user":
+                # 使用藍色區塊把使用者的「糾正提示」凸顯出來
+                st.info(f"💡 **您的修正提示：** {msg['content']}")
+        
+        st.write("---")
+        
+        # 🌟【2.0 核心：互動式修正輸入框】🌟
+        # 使用 Form 框住，並開啟 clear_on_submit，按送出後輸入框會自動清空，非常專業
+        with st.form(key="feedback_form", clear_on_submit=True):
+            user_feedback = st.text_input("💬 發現步驟算錯、代錯數字，或有不懂的地方？請在此輸入回覆叫它重算：", 
+                                          placeholder="例如：你第三步力矩方程式的正負號列錯了，請重新檢查並修正。")
+            submit_feedback = st.form_submit_button("🚀 送出修正提示")
+            
+            if submit_feedback and user_feedback:
+                with st.spinner("AI 正在重新翻閱上面的算式並進行修正..."):
+                    # 使用 2.0 聊天通道 send_message，AI 會記得上面所有的對話
+                    response = st.session_state.chat_session.send_message(user_feedback)
                     
-                    # 呼叫 AI 腦袋
-                    model = genai.GenerativeModel('gemini-2.5-flash')
-                    inputs = [prompt]
-                    if uploaded_file:
-                        inputs.append(image)
-                        
-                    response = model.generate_content(
-                        inputs,
-                        generation_config={"response_mime_type": "application/json"}
-                    )
-                    
-                    # 解析回傳的 JSON 資料
-                    result = json.loads(response.text)
-                    
-                    # 渲染在網頁畫面上
-                    st.success("🎉 解題完成！")
-                    
-                    st.subheader("📌 題型與狀態判定")
-                    st.info(result.get("type_judgment", "無"))
-                    
-                    st.subheader("📐 使用公式")
-                    st.code(result.get("formula_used", "無"))
-                    
-                    st.subheader("🔢 詳細解題步驟")
-                    for i, step in enumerate(result.get("steps", []), 1):
-                        st.write(f"**{i}.** {step}")
-                        
-                    st.subheader("🎯 計算結果（最終答案）")
-                    st.metric(label="RESULT", value=result.get("calculation_result", "無"))
-                    
-                    st.subheader("💡 觀念補充說明")
-                    st.warning(result.get("notes", "無"))
-                    
-                except Exception as e:
-                    st.error(f"系統發生非預期錯誤：{str(e)}")
-                    st.info("提示：請確認輸入內容是否正常，或檢查 API Key 是否失效。")
+                    # 把使用者的質疑和 AI 的全新修正答案一起塞進歷史紀錄
+                    st.session_state.messages.append({"role": "user", "content": user_feedback})
+                    st.session_state.messages.append({"role": "ai", "content": response.text})
+                
+                # 強制網頁刷新，把最新的對話泡泡頂上去
+                st.rerun()
+    else:
+        st.info("等待您在左側輸入資料並點擊『開始解題』...")
