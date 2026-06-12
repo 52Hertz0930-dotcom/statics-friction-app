@@ -6,8 +6,8 @@ from PIL import Image
 # 讓網頁版面變寬，左邊輸入、右邊看結果
 st.set_page_config(layout="wide")
 
-st.title("📐 AI 輔助靜力學求解系統")
-st.subheader("第四章：摩擦力 (Friction) 2.0 安全防禦版")
+st.title("📐 AI 輔助靜力學解題系統")
+st.subheader("第四章：摩擦力 ")
 st.write("本系統由 Gemini 2.5 Flash 驅動。若 AI 計算有誤，可在右側對話框直接輸入提示叫它重算！")
 
 # --- 【金鑰安全檢查區】 ---
