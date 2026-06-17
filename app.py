@@ -83,11 +83,12 @@ with col1:
                         st.session_state.messages.append({"role": "ai", "content": response.text, "model": model_name})
                         success = True
                         break 
-                    except google_exceptions.ResourceExhausted:
-                        error_logs.append(f"❌ {model_name} 額度耗盡，正在切換下一順位大腦...")
+                    except google_exceptions.ResourceExhausted as e:
+                        # 這裡會強制顯示錯誤細節，讓你知道是不是真的額度沒了
+                        st.error(f"模型 {model_name} 回報錯誤: {e}") 
                         continue
                     except Exception as e:
-                        error_logs.append(f"⚠️ {model_name} 發生錯誤: {e}")
+                        st.error(f"模型 {model_name} 發生未預期錯誤: {e}")
                         continue
                 
                 if success:
