@@ -8,7 +8,8 @@ st.set_page_config(layout="wide")
 
 st.title("📐 AI 輔助靜力學求解系統")
 st.subheader("第四章：摩擦力 (Friction) 4.0 終極精準備援版")
-st.write("本系統優先由頂規的 Gemini 2.5 Pro 驅動。若額度用盡，系統將自動無縫切換至 Flash 或 1.5 Pro 大腦，確保解題精準且不中斷！")
+# 👇 這裡的前端提示文字已經同步幫你修改了
+st.write("本系統優先由極速的 Gemini 2.5 Flash 驅動。若額度用盡，系統將自動無縫切換至 1.5 Pro 大腦，確保解題精準且不中斷！")
 
 # --- 【金鑰安全檢查區】 ---
 api_key_ready = False
@@ -32,8 +33,8 @@ if "raw_history" not in st.session_state:
 if "messages" not in st.session_state:
     st.session_state.messages = []     # 供前端網頁渲染的結構
 
-# 📌 終極精準度優先的備援大腦順序 (Pro先發 -> Flash接手 -> 舊版Pro保底)
-MODEL_PIPELINE = ['gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-1.5-pro']
+# 👇 📌 這裡已經修改為 Flash 先發 -> 1.5 Pro 保底
+MODEL_PIPELINE = ['gemini-2.5-flash', 'gemini-1.5-pro']
 
 # --- 【前端介面：左右雙欄配置】 ---
 col1, col2 = st.columns(2)
@@ -83,12 +84,11 @@ with col1:
                         st.session_state.messages.append({"role": "ai", "content": response.text, "model": model_name})
                         success = True
                         break 
-                    except google_exceptions.ResourceExhausted as e:
-                        # 這裡會強制顯示錯誤細節，讓你知道是不是真的額度沒了
-                        st.error(f"模型 {model_name} 回報錯誤: {e}") 
+                    except google_exceptions.ResourceExhausted:
+                        error_logs.append(f"❌ {model_name} 額度耗盡，正在切換下一順位大腦...")
                         continue
                     except Exception as e:
-                        st.error(f"模型 {model_name} 發生未預期錯誤: {e}")
+                        error_logs.append(f"⚠️ {model_name} 發生錯誤: {e}")
                         continue
                 
                 if success:
